@@ -21,6 +21,15 @@ A fully deployed, one-click sandbox is running:
 - **Admin API** — https://adminapi-production-efd2.up.railway.app (Go on Railway)
 - **Database + Auth** — Supabase project `clara-network`
 
+The database runs on Supabase's free plan, which pauses a project after 7 days
+without activity. A paused project takes the whole demo down with it: the
+database stops resolving, every Admin API data route returns a 500, and the
+console has nothing to render. A daily
+[`keepalive`](./.github/workflows/keepalive.yml) workflow pings the database and
+the Admin API — both to reset that timer and to fail loudly if the demo dies,
+so an outage surfaces as a failing workflow instead of rotting unnoticed. A paid
+Supabase plan is the only hard guarantee, since paid projects cannot be paused.
+
 Log in by picking a persona — no typing. See
 [`web/README.md`](./web/README.md) for the full matrix and deploy runbook.
 
