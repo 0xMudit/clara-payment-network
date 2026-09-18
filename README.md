@@ -312,8 +312,10 @@ A **web admin console** (`web/`) is built and deployed to the cloud (Vercel +
 Supabase + Railway) with a one-click persona login, and `make smoke` verifies
 the full stack end to end.
 
-**v0.1.0-beta** is feature-complete and ready for beta deployment with up to
-10K users — and currently live at https://clara-network.vercel.app.
+**v0.1.0-beta** — all ten blueprint phases are implemented, `make smoke`
+verifies the stack end to end, and the demo is live at
+https://clara-network.vercel.app. No load or capacity testing has been run, so
+treat the deployment as a functional sandbox rather than a capacity claim.
 Contributions are welcome.
 
 ## License
