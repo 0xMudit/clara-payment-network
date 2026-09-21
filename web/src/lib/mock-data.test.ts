@@ -38,6 +38,15 @@ function isSeries(x: unknown): x is { items: SeriesPoint[] } {
   );
 }
 
+function isPage(x: unknown): x is Page<Record<string, unknown>> {
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    Array.isArray((x as { items?: unknown })?.items) &&
+    typeof (x as { total?: unknown })?.total === "number"
+  );
+}
+
 describe("mock-data", () => {
   describe("getMockForPath dispatch", () => {
     it("returns null for unknown paths", () => {
@@ -76,6 +85,103 @@ describe("mock-data", () => {
 
     it("matches paths regardless of trailing query strings", () => {
       expect(isDashboard(getMockForPath("/dashboard?anything"))).toBe(true);
+    });
+
+    it("returns a Page of cards for /cards and honors ?limit", () => {
+      const page = getMockForPath("/cards?limit=3");
+      expect(isPage(page)).toBe(true);
+      if (isPage(page)) {
+        expect(page.items).toHaveLength(3);
+        expect(page.total).toBeGreaterThan(3);
+        expect(page.items[0]).toHaveProperty("ref");
+        expect(page.items[0]).toHaveProperty("panMask");
+        expect(page.items[0]).toHaveProperty("bin");
+      }
+    });
+
+    it("returns a Page of tokens for /tokens and honors ?limit", () => {
+      const page = getMockForPath("/tokens?limit=2");
+      expect(isPage(page)).toBe(true);
+      if (isPage(page)) {
+        expect(page.items).toHaveLength(2);
+        expect(page.items[0]).toHaveProperty("token");
+        expect(page.items[0]).toHaveProperty("par");
+        expect(page.items[0]).toHaveProperty("createdAt");
+      }
+    });
+
+    it("returns a Page of merchants for /merchants and honors ?limit", () => {
+      const page = getMockForPath("/merchants?limit=4");
+      expect(isPage(page)).toBe(true);
+      if (isPage(page)) {
+        expect(page.items).toHaveLength(4);
+        expect(page.items[0]).toHaveProperty("id");
+        expect(page.items[0]).toHaveProperty("riskTier");
+        expect(page.items[0]).toHaveProperty("reserveBalance");
+      }
+    });
+
+    it("returns a Page of disputes for /disputes and honors ?limit", () => {
+      const page = getMockForPath("/disputes?limit=2");
+      expect(isPage(page)).toBe(true);
+      if (isPage(page)) {
+        expect(page.items).toHaveLength(2);
+        expect(page.items[0]).toHaveProperty("id");
+        expect(page.items[0]).toHaveProperty("reasonCode");
+        expect(page.items[0]).toHaveProperty("amountMinor");
+      }
+    });
+
+    it("returns a clearing cycle list plus records/positions for that cycle", () => {
+      const cycles = getMockForPath("/clearing/cycles") as { items: string[] };
+      expect(cycles.items.length).toBeGreaterThan(0);
+      const cycle = cycles.items[0];
+      expect(cycle).toMatch(/^\d{8}$/);
+
+      const records = getMockForPath(
+        `/clearing/records?cycle=${cycle}&limit=3`,
+      ) as { items: Record<string, unknown>[] };
+      expect(records.items).toHaveLength(3);
+      expect(records.items.every((r) => r.cycleId === cycle)).toBe(true);
+
+      const positions = getMockForPath(
+        `/clearing/positions?cycle=${cycle}`,
+      ) as { items: Record<string, unknown>[] };
+      expect(positions.items.length).toBeGreaterThan(0);
+      expect(positions.items.every((p) => p.cycleId === cycle)).toBe(true);
+    });
+
+    it("returns prefunds, a default fund balance, and instructions", () => {
+      const cycles = getMockForPath("/clearing/cycles") as { items: string[] };
+      const cycle = cycles.items[0];
+
+      const prefunds = getMockForPath("/settlement/prefunds") as {
+        items: Record<string, unknown>[];
+      };
+      expect(prefunds.items.length).toBeGreaterThan(0);
+      expect(prefunds.items[0]).toHaveProperty("member");
+
+      const df = getMockForPath("/settlement/default-fund") as {
+        balance: number;
+      };
+      expect(typeof df.balance).toBe("number");
+
+      const instructions = getMockForPath(
+        `/settlement/instructions?cycle=${cycle}`,
+      ) as { items: Record<string, unknown>[] };
+      expect(instructions.items.length).toBeGreaterThan(0);
+      expect(instructions.items[0]).toHaveProperty("msgId");
+      expect(instructions.items[0]).toHaveProperty("direction");
+    });
+
+    it("returns ledger accounts", () => {
+      const accounts = getMockForPath("/ledger/accounts") as {
+        items: Record<string, unknown>[];
+      };
+      expect(accounts.items.length).toBeGreaterThan(0);
+      expect(accounts.items[0]).toHaveProperty("id");
+      expect(accounts.items[0]).toHaveProperty("type");
+      expect(accounts.items[0]).toHaveProperty("balance");
     });
   });
 
