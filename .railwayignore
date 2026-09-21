@@ -1,0 +1,8 @@
+# Build artifacts / deps — rebuilt inside the Docker image on Railway.
+node_modules
+web/node_modules
+web/.next
+**/.next
+.git
+.cache
+*.log
