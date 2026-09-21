@@ -1,0 +1,76 @@
+name: keepalive
+
+# Supabase pauses free-plan projects after 7 days without activity, which takes
+# the live demo down with it: the database stops answering, the adminapi returns
+# 500s, and the web console has nothing to render. Any request that reaches the
+# project resets that inactivity timer, so this job pings the database and the
+# deployed adminapi once a day.
+#
+# It doubles as an uptime check for the public demo. The job deliberately fails
+# on a dead database or a non-200 adminapi, so GitHub emails the maintainer
+# instead of the demo silently rotting again.
+#
+# Caveat: GitHub disables scheduled workflows in repositories with no activity
+# for 60 days, so this only protects a repo that gets a push at least that often.
+# A paid Supabase plan is the only hard guarantee (paid projects cannot pause).
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Ping Supabase (resets the free-plan pause timer)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "Set the SUPABASE_URL and SUPABASE_ANON_KEY repository secrets first." >&2
+            exit 1
+          fi
+
+          # Any HTTP response below 500 means the project answered. A 401 or 403
+          # is still activity, so only transport failures (000, e.g. the DNS
+          # record disappearing while paused) and 5xx count as down.
+          code="$(curl -sS -o /tmp/supabase.json -w '%{http_code}' --max-time 30 \
+            "$SUPABASE_URL/rest/v1/switch_transactions?select=id&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" || echo 000)"
+          echo "Supabase responded with HTTP $code"
+
+          if [ "$code" = "000" ] || [ "$code" -ge 500 ]; then
+            echo "::error::Supabase project is not answering; it is most likely paused."
+            exit 1
+          fi
+
+      - name: Ping the deployed adminapi
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /tmp/admin.json -w '%{http_code}' --max-time 30 \
+            "https://adminapi-production-efd2.up.railway.app/api/v1/dashboard" || echo 000)"
+          echo "adminapi responded with HTTP $code"
+
+          if [ "$code" != "200" ]; then
+            echo "::error::adminapi did not return 200. A 500 here usually means it cannot reach the database."
+            head -c 400 /tmp/admin.json >&2 || true
+            echo >&2
+            exit 1
+          fi
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### Clara demo heartbeat"
+            echo
+            echo "Ran $(date -u '+%Y-%m-%d %H:%M UTC')."
+            echo "See the step logs above for the Supabase and adminapi responses."
+          } >> "$GITHUB_STEP_SUMMARY"
