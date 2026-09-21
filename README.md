@@ -162,6 +162,10 @@ paywalled documents.
 
 ## Architecture
 
+<img src="docs/images/architecture.png" width="620" alt="Clara Network architecture overview">
+
+*Clara Network architecture overview.*
+
 <img src="docs/images/architecture-overview.png" width="620" alt="Clara Network end-to-end architecture">
 
 *End-to-end system architecture: entry points, acquirer host, Clara switch,
