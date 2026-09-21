@@ -121,6 +121,13 @@ railway up --deploy
 npx supabase db push --project-ref <ref> --include-all
 ```
 
+> **Stay current with the deployed adminapi:** the console falls back to mock
+> data for every dashboard route when the Admin API is unreachable or errors
+> (see `src/lib/mock-data.ts`), so a stale Go build is easy to miss — for
+> example a Railway deployment older than the `/api/v1/dashboard/series`
+> endpoint 404s on that route and the console serves simulated series data
+> (verify with `curl https://adminapi-production-efd2.up.railway.app/api/v1/dashboard/series`).
+
 Environment variables to set on the deployed services:
 
 | var                           | service  |
