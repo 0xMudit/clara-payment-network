@@ -1,39 +1,128 @@
 # Clara Network
 
-**Clara Network** is an open-source project to design and build a
-Mastercard/Visa-style card payment network end-to-end: scheme (network)
-operator, issuer, and acquirer infrastructure.
+**An open-source card payment network you can run on your machine** — the
+scheme (network) operator, the issuer, and the acquirer, end to end.
 
-## What's in this repository
+Clara Network is a working simulation of a Mastercard/Visa-style four-party
+payment network: an ISO 8583 switch that routes authorizations by BIN,
+clearing and net settlement with prefunded member accounts, a double-entry
+ledger, card issuing with EMV-style cryptograms and network tokens, merchant
+acquiring, a disputes engine, an HSM simulation with dual-control key
+ceremonies, issuer stand-in processing with circuit breakers, and instant
+payments (pacs.008 RTP). It ships with a read-only Admin API and a live
+**web admin console** where you sign in as a Scheme Operator, Issuer, Acquirer,
+Merchant, or Viewer and watch the whole network move.
 
-The repo holds the **research and specification library** for the network under
-[`docs/`](./docs/), plus the Go implementation of the switch and settlement
-engine described in [`docs/25-clara-network-system-design.md`](./docs/25-clara-network-system-design.md),
-and a **live web admin console** ([`web/`](./web/)) deployed to the cloud.
+It is not a toy dashboard: every screen reads from the same PostgreSQL schema
+the switch, clearing engine, and sims write to. The repository also holds the
+**research and specification library** under [`docs/`](./docs/) — 27 documents
+covering ISO 8583, ISO 20022, EMV, tokenization, PCI DSS, interchange
+economics, scheme governance, and the full system design blueprint.
 
-Start with [`docs/00-README.md`](./docs/00-README.md).
+| | |
+|---|---|
+| **Live demo** | https://clara-network.vercel.app (pick a persona — no typing) |
+| **Docs** | [`docs/00-README.md`](./docs/00-README.md) — start here |
+| **Build blueprint** | [`docs/25-clara-network-system-design.md`](./docs/25-clara-network-system-design.md) |
+| **Status** | v0.1.0-beta — all ten blueprint phases implemented, [`make smoke`](#smoke-testing) verifies the stack end to end |
+| **License** | [MIT](./LICENSE) |
 
-### Live demo (cloud)
+![Clara Network landing page](docs/screenshots/14-landing-page.png)
 
-A fully deployed, one-click sandbox is running:
+*The landing page — one click from here to a signed-in operator seat.*
 
-- **Web console** — https://clara-network.vercel.app (Next.js on Vercel)
-- **Admin API** — https://adminapi-production-efd2.up.railway.app (Go on Railway)
-- **Database + Auth** — Supabase project `clara-network`
+## Why Clara Network
 
-The database runs on Supabase's free plan, which pauses a project after 7 days
-without activity. A paused project takes the whole demo down with it: the
-database stops resolving, every Admin API data route returns a 500, and the
-console has nothing to render. A daily
-[`keepalive`](./.github/workflows/keepalive.yml) workflow pings the database and
-the Admin API — both to reset that timer and to fail loudly if the demo dies,
-so an outage surfaces as a failing workflow instead of rotting unnoticed. A paid
-Supabase plan is the only hard guarantee, since paid projects cannot be paused.
+Payment-network internals are locked behind scheme memberships, certifications,
+and NDAs, so almost nobody gets to read — let alone run — the machinery. Clara
+Network opens it up:
 
-Log in by picking a persona — no typing. See
-[`web/README.md`](./web/README.md) for the full matrix and deploy runbook.
+- **It runs on your machine.** One `docker compose up` boots the switch, the
+  issuer/acquirer/clearing/ledger/card/disputes/HSM/resilience/instant sims,
+  PostgreSQL, and Redis. No scheme backend sits in the middle; the network is
+  the code in this repo.
+- **It speaks the real standards.** ISO 8583 authorizations on the wire,
+  ISO 20022 pacs.008/pacs.009 for instant payments and settlement, EMV-style
+  ARQC cryptograms with ATC anti-replay, ISO 9564 PIN blocks, ISO 9797-1 retail
+  MACs, TR-31-style key blocks.
+- **It shows its work.** Every authorization lands in an audit log, every net
+  position posts as a balanced journal entry, every settlement instruction is
+  inspectable XML, and the Admin API exposes all of it.
+- **It fails realistically.** Member defaults draw on the default fund,
+  issuer outages trip circuit breakers and fall back to stand-in processing,
+  reconciliation catches a corrupted statement, and disputes move through
+  representment to arbitration with SLA deadlines.
+- **It is documented like a scheme.** The docs library is not API reference —
+  it is the operating manual a real network's members would read, from BIN
+  numbering to chargeback reason codes to PFMI oversight principles.
 
-### Documentation library (all docs on `main`)
+## Features
+
+| Area | What you get |
+|------|--------------|
+| Switch | ISO 8583 authorization switching with BIN-based routing (DE100 or BIN table), per-issuer failover lists, idempotent replay protection |
+| Risk | In-path velocity rules (per card / per merchant) counted in Redis with configurable decline codes |
+| Clearing & settlement | Clearing file capture, per-member net positions, prefunded caps, default fund for member defaults, ISO 20022 pacs.009 settlement instructions |
+| Ledger | Append-only double-entry journal, reconciliation against the settlement agent's statement with mismatch classification |
+| Issuing | BIN ranges, card personalization, EMV-style ARQC verification with ATC anti-replay, token vault (PAN → token + PAR), mobile-wallet provisioning |
+| Acquiring | Merchant boarding with MATCH/OFAC negative-list screening, MCC risk tiering, fee withholding, rolling reserves, scheduled payouts |
+| Disputes | Reason-code taxonomy, file → representment → rule → arbitration lifecycle, associated-transaction check, SLA tracking, chargeback-ratio monitoring |
+| Key management | HSM simulation: dual-control M-of-N key ceremonies, AES key wrap (RFC 3394), TR-31 key blocks, PIN blocks (formats 0/4), retail MACs, rotation, audit, dual-control zeroize |
+| Resilience | Stand-in processing (SIP/STIP) with per-issuer limits and negative/valid-card files, circuit breakers with half-open probing, p99 latency metrics, 91-burst outage detection |
+| Instant payments | pacs.008 credit transfers settled 24/7/365 against prefunded positions, 20-second SLA, verify-and-reserve capacity checks, AC04/AC01/AG01/FF01 rejections, pacs.002 status reports |
+| Admin API | Read-only REST service (`:8083`) over the shared PostgreSQL schema — transactions, clearing, settlement, ledger, cards, tokens, merchants, disputes |
+| Web console | Next.js dashboard on Vercel + Supabase + Railway with one-click persona login and per-role page access |
+
+## Screenshots
+
+Sign in by picking a persona — the console gates every page by role, so each
+seat sees a different network. All screenshots are full size in
+[`docs/screenshots/`](./docs/screenshots/).
+
+### Getting in
+
+| | |
+|---|---|
+| <img src="docs/screenshots/12-demo-role-selection.png" width="420" alt="Persona login screen"> | ![Landing page](docs/screenshots/14-landing-page.png) |
+| **Persona login** — pick Scheme Operator, Issuer, Acquirer, Merchant, or Viewer and you are signed in instantly, no typing. | **Landing page** — the front door, with the persona picker one click away. |
+
+### Scheme operator
+
+| | |
+|---|---|
+| <img src="docs/screenshots/01-operations-dashboard.png" width="420" alt="Operations dashboard"> | <img src="docs/screenshots/08-transactions.png" width="420" alt="Transactions audit log"> |
+| **Operations dashboard** (`/ops`) — the whole network at a glance: transaction, clearing, merchant, dispute, card, and token counts. | **Transactions** — the switch's authorization audit log, filterable by status and currency. |
+| <img src="docs/screenshots/09-clearing.png" width="420" alt="Clearing cycles"> | <img src="docs/screenshots/10-clearing-instructions.png" width="420" alt="Settlement instructions"> |
+| **Clearing** — clearing cycles with per-member net positions. | **Settlement instructions** — the pacs.009 XML instructions that move money between members. |
+| <img src="docs/screenshots/03-settlement.png" width="420" alt="Settlement and prefunds"> | <img src="docs/screenshots/05-ledger.png" width="420" alt="Double-entry ledger"> |
+| **Settlement** — prefund account balances against caps, default fund, and settlement instructions. | **Ledger** — the append-only double-entry journal with computed balances per account. |
+| <img src="docs/screenshots/06-scheme-disputes.png" width="420" alt="Scheme disputes view"> | <img src="docs/screenshots/11-merchants.png" width="420" alt="Merchant directory"> |
+| **Disputes** — reason codes, lifecycle stage, SLA deadlines, evidence, and fees across all members. | **Merchants** — boarded merchants with MCC, risk tier, reserves, and limits. |
+
+### Issuer
+
+| | |
+|---|---|
+| <img src="docs/screenshots/04-issuer-dashboard.png" width="420" alt="Issuer dashboard"> | <img src="docs/screenshots/07-cards.png" width="420" alt="Issued cards"> |
+| **Issuer dashboard** (`/issuer`) — the issuer's portfolio: cards, tokens, and authorization activity. | **Cards** — issued cards with masked PAN, status, product, and the ATC anti-replay counter. |
+| <img src="docs/screenshots/02-issuer-tokens.png" width="420" alt="Network tokens"> | |
+| **Tokens** — network tokens with PAR, device, and requestor provenance from the token vault. | |
+
+### Acquirer
+
+| | |
+|---|---|
+| <img src="docs/screenshots/17-acquirer-dashboard.png" width="420" alt="Acquirer dashboard"> | <img src="docs/screenshots/16-acquirer-disputes.png" width="420" alt="Acquirer disputes view"> |
+| **Acquirer dashboard** (`/acquirer`) — the acquirer's book: merchants, funding lines, and dispute exposure. | **Disputes** — chargebacks against the acquirer's merchants, with representment deadlines. |
+
+### Viewer & activity
+
+| | |
+|---|---|
+| <img src="docs/screenshots/15-viewer-overview.png" width="420" alt="Viewer overview"> | <img src="docs/screenshots/13-operations-activity.png" width="420" alt="Operations activity feed"> |
+| **Overview** (`/overview`) — the read-only viewer seat: portfolio-wide metrics without operational controls. | **Operations activity** — the live feed of what the network is doing right now. |
+
+## Documentation library
 
 | # | Document | What it covers |
 |---|----------|----------------|
@@ -282,6 +371,29 @@ that role's demo credentials (common password `ClaraDemo!2026`, provisioned by
 `npm run db:users`). See [`web/README.md`](./web/README.md) for the demo matrix,
 local setup, and the full cloud deploy runbook.
 
+### Live demo (cloud)
+
+A fully deployed, one-click sandbox is running:
+
+- **Web console** — https://clara-network.vercel.app (Next.js on Vercel)
+- **Admin API** — https://adminapi-production-efd2.up.railway.app (Go on Railway)
+- **Database + Auth** — Supabase project `clara-network`
+
+The database runs on Supabase's free plan, which pauses a project after 7 days
+without activity. A paused project takes the whole demo down with it: the
+database stops resolving and every Admin API data route returns a 500. A daily
+[`keepalive`](./.github/workflows/keepalive.yml) workflow pings the database and
+the Admin API — both to reset that timer and to fail loudly if the demo dies,
+so an outage surfaces as a failing workflow instead of rotting unnoticed. The
+console also degrades gracefully: when the Admin API is unreachable or returns
+an error, every dashboard page falls back to realistic mock data (see
+`web/src/lib/mock-data.ts`) instead of blanking out, so the demo stays
+navigable. A paid Supabase plan is the only hard guarantee, since paid
+projects cannot be paused.
+
+Log in by picking a persona — no typing. See
+[`web/README.md`](./web/README.md) for the full matrix and deploy runbook.
+
 ### Smoke testing
 
 `make smoke` (or `scripts/smoke.sh`) is a one-click end-to-end smoke test that
@@ -325,7 +437,24 @@ the full stack end to end.
 verifies the stack end to end, and the demo is live at
 https://clara-network.vercel.app. No load or capacity testing has been run, so
 treat the deployment as a functional sandbox rather than a capacity claim.
-Contributions are welcome.
+Contributions are welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md) and the
+[`ROADMAP.md`](./ROADMAP.md) for where help is most useful.
+
+## Contributing
+
+Contributions are welcome — issues, docs, and pull requests alike. Start with
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) for setup and the reviewable-PR bar, and
+[`docs/28-contributor-architecture-guide.md`](./docs/28-contributor-architecture-guide.md)
+for where the code lives. Roadmap work is tracked in [`ROADMAP.md`](./ROADMAP.md).
+Please read the [`Code of Conduct`](./CODE_OF_CONDUCT.md); it applies to every
+project space.
+
+## Security
+
+Clara Network is a simulator and must not be connected to real card
+infrastructure, but it implements real key-management and message-security
+machinery worth respecting. Please report vulnerabilities privately per
+[`SECURITY.md`](./SECURITY.md) rather than in a public issue.
 
 ## License
 
